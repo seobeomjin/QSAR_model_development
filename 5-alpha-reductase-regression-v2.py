@@ -21,7 +21,6 @@ df = pd.read_csv(wdir+csv)
 df = df.dropna(axis=0)
 y = df['Standard Value']
 x = df.drop(['Molecule', 'Standard Value'], axis=1)
-datasize = df.shape[0]
 
 #data split
 x_train, x_test, y_train, y_test = train_test_split(x,y,test_size = 0.1)
