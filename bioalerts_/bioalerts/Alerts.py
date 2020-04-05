@@ -261,6 +261,8 @@ class CalculatePvaluesContinuous:
         self.bio_substr = []
         self.filter_c_nb_check = []
         self.filter_d_nb_check = []
+
+        self.significant_substructure_dict = {}
     
     def calculate_p_values(self,
                            mols,
@@ -391,6 +393,12 @@ class CalculatePvaluesContinuous:
                         filter_d = (float(len(high_bio_substr)) / float(len(bio_substr))) > threshold_high_act_ratio 
 
                         if filter_c and filter_d : 
+                            # extract_significant_substructure 
+                            if substructure_id in self.significant_substructure_dict.keys():
+                                self.significant_substructure_dict[substructure_id].append(m)
+                            else : 
+                                self.significant_substructure_dict.update({substructure_id:[m]})
+
                             # check normality
                             if sc.stats.shapiro(bio_substr) > 0.05 and sc.stats.shapiro(bio_wo_substr) > 0.05:
                                 test = sc.stats.ttest_ind(bio_substr, bio_wo_substr)
@@ -425,6 +433,69 @@ class CalculatePvaluesContinuous:
         if self.Bonferroni == True:
             self.output['p_value'] = self.output['p_value'] * nb_substructures_processed
             self.output = self.output[self.output.p_value < 0.05]
+
+
+    def get_significant_substructure_with_high_bioactivity(self,
+                           mols,
+                           substructure_dictionary,
+                           bioactivities,
+                           mols_ids,
+                           threshold_nb_substructures,
+                           threshold_pvalue,
+                           threshold_ratio,
+                           threshold_high_act_nb_substructures,
+                           threshold_high_act_ratio,
+                           threshold_bioactivity=0,
+                           ):
+
+        nb_mols = float(len(set([item for sublist in substructure_dictionary.values() for item in sublist])))
+
+        
+        if type(mols) != list: mols = [mols[i] for i in np.arange(0,len(mols))]
+        nb_substructures_processed=0
+        already_processed = []
+        for m,mol in enumerate(mols): 
+            info={}
+            fp = AllChem.GetMorganFingerprint(mol,max(self.radii_ext),bitInfo=info)
+            substructures_sub_dict = substructure_dictionary.keys()
+            
+            for substructure_id, atom_radius in info.iteritems():
+                nb_substructures_processed += 1
+                # check if the substructure is in the reference dictionary
+                if substructure_id in substructures_sub_dict and atom_radius[0][1] in self.radii_ext and substructure_id not in already_processed:
+                    nb_comp_with_substructure = float(len(substructure_dictionary[substructure_id]))
+                    
+                    #filter threshold of compounds with the substructure
+                    filter_a = nb_comp_with_substructure > threshold_nb_substructures
+                    # filter threshold
+                    filter_b = float(nb_comp_with_substructure / nb_mols) > threshold_ratio
+                    if filter_a and filter_b:
+                        mask = np.in1d(mols_ids,substructure_dictionary[substructure_id])
+                        bio_substr = bioactivities[mask]
+                        bio_wo_substr = bioactivities[np.logical_not(mask)]
+
+                        self.bio_substr.append(len(bio_substr))
+
+                        high_bio_substr = []
+                        for i in bio_substr : 
+                            if i >= threshold_bioactivity:
+                                high_bio_substr.append(i)
+
+                        self.filter_c_nb_check.append(len(high_bio_substr))
+                        self.filter_d_nb_check.append((len(high_bio_substr)))
+
+                        filter_c = len(high_bio_substr) > threshold_high_act_nb_substructures 
+                        filter_d = (float(len(high_bio_substr)) / float(len(bio_substr))) > threshold_high_act_ratio 
+
+                        if filter_c and filter_d : 
+                            # extract_significant_substructure 
+                            if substructure_id in self.significant_substructure_dict.keys():
+                                self.significant_substructure_dict[substructure_id].append(m)
+                            else : 
+                                self.significant_substructure_dict.update({substructure_id:[m]})
+        
+        return self.significant_substructure_dict
+
             
     def XlSXOutputWriter(self,frame, output_filename, molCol=['Substructure',"Substructure in Molecule"], size=(300,300)):
         """
