@@ -91,25 +91,25 @@ class CalculateFPs:
         self.substructure_ids = substr_ids
         if len(self.reference_substructure_keys)==0:
             print "No input set of keys for the substructures. \nThus, the substructures present in the input molecules will be considered for the calculation of unhashed fingerprints."
-            columns = _array(list(set(self.substructure_dictionary.keys())))
-            columns = _sort(columns)
-            self.columns_unhashed = columns
-            dimensionality_unhashed = len(columns)
+            columns = _array(list(set(self.substructure_dictionary.keys()))) ### no duplicated, make list then arrat
+            columns = _sort(columns) ###sort  ### from small val to big val
+            self.columns_unhashed = columns ###substructure dictionary key sorted  
+            dimensionality_unhashed = len(columns) ###nb of substructure, not duplicated 
         else:
             columns = _array(list(set(self.reference_substructure_keys)))
             columns = _sort(columns)
             self.columns_unhashed = columns
             dimensionality_unhashed = len(columns)
         
-        fps_unhashed_binary = _zeros((len(self.mols),dimensionality_unhashed), dtype=int)
-        fps_unhashed_counts = _zeros((len(self.mols),dimensionality_unhashed), dtype=int)
+        fps_unhashed_binary = _zeros((len(self.mols),dimensionality_unhashed), dtype=int) ###make all zeros 
+        fps_unhashed_counts = _zeros((len(self.mols),dimensionality_unhashed), dtype=int) ###make all zeros 
         
 
         # removing the indices corresponding to the substructures in the test molecules not present in the references set of substructures..
-        idxs = _array([idxs[x] for x in _arange(0,len(substr_ids)) if substr_ids[x] in self.columns_unhashed])    
-        counts = _array([counts[x] for x in _arange(0,len(substr_ids)) if substr_ids[x] in self.columns_unhashed]) 
+        idxs = _array([idxs[x] for x in _arange(0,len(substr_ids)) if substr_ids[x] in self.columns_unhashed])    ###substr_ids[x] only if om columns_unhashed
+        counts = _array([counts[x] for x in _arange(0,len(substr_ids)) if substr_ids[x] in self.columns_unhashed])   ###substr_ids[x] only if om columns_unhashed
         substr_ids = _array([substr_ids[x] for x in _arange(0,len(substr_ids)) if substr_ids[x] in self.columns_unhashed])
-        mapping = _array([(substr_ids[x]==columns).nonzero() for x in _arange(0,len(substr_ids))])
+        mapping = _array([(substr_ids[x]==columns).nonzero() for x in _arange(0,len(substr_ids))]) ###if they are same, make it nonzero ### this is 
         mapping = mapping.flatten()
         if len(mapping) ==0:
             print "There is no intersection between the substructures \n(i)provided in the reference key set, and\n(ii) the substructures found in the input molecules."

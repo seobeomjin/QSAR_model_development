@@ -40,6 +40,9 @@ class CalculatePvaluesCategorical:
                    'Comp. with substr. inactive',]
         self.output = pd.DataFrame(columns=columns)
         self.Bonferroni = None
+        self.toxic_substructure = {}
+        self.nontoxic_substructure = {}
+        
     def calculate_p_values(self,mols,substructure_dictionary,bioactivities,mols_ids,threshold_frequency,
                            threshold_nb_substructures = 5,
                            threshold_pvalue = 0.05,
@@ -174,6 +177,100 @@ class CalculatePvaluesCategorical:
            self.output = self.output[self.output.p_value < 0.05]
         print 'Number of substructures processed: ', nb_substructures_processed 
         print 'Significant substructures: ', self.output.shape[0], 'substructures'
+
+
+
+    def calculate_toxic_and_nontoxic_substructure(self,mols,substructure_dictionary,bioactivities,mols_ids,threshold_frequency,
+                           threshold_nb_substructures = 5,
+                           threshold_pvalue = 0.05,
+                           active_label=1,
+                           inactive_label=0,
+                           Bonferroni = True):
+        self.Bonferroni = Bonferroni
+        
+        # n
+        nb_mols = float(len(set([item for sublist in substructure_dictionary.values() for item in sublist])))
+        # m
+        nb_active_mols = float(np.sum(bioactivities == active_label))
+        # (m - n)
+        nb_inactive_mols = float(np.sum(bioactivities == inactive_label))
+
+        nb_substructures_processed = 0
+        if type(mols) != list: mols = [ext.mols[i] for i in np.arange(0,len(mols))]  #[x for x in mols]
+
+        subs_discarded = [] # substructure that have been identified in other molecules. 
+        for m,mol in enumerate(mols): #np.arange(0,len(mols)):
+            #mol=mols[m]
+            root_atoms_discarded = [] # center (or root) atoms discarded..
+            info={}
+            fp = AllChem.GetMorganFingerprint(mol,self.max_radius,bitInfo=info)
+            # sort info to make sure the substructures are read from the smallest to the biggest.
+            # In case a substructure with low radius is removed, we make sure all containing it will not be considered either in the following steps)
+            # get keys sorted
+            ff= sorted(info.iteritems(), key=operator.itemgetter(1))
+            substructure_ids = [ff[x][0] for x in range(0,len(info))] 
+            substructures_sub_dict = substructure_dictionary.keys()  
+
+            for substructure_id in substructure_ids: 
+                atom_radius = info[substructure_id]
+                nb_substructures_processed += 1
+                # check is the substructure is in the database (i.e. training data)
+                if substructure_id in substructures_sub_dict and substructure_id not in subs_discarded and atom_radius[0][0] not in root_atoms_discarded:
+                    mols_with_current_substructure = substructure_dictionary[substructure_id]
+                    nb_comp_with_substructure = float(len(mols_with_current_substructure)) 
+                    active_comp = (bioactivities == active_label)
+                    comp_with_substructure = np.in1d(np.asarray(mols_ids) , np.asarray(mols_with_current_substructure))
+                    nb_comp_with_substructure_active = np.sum(active_comp * comp_with_substructure) #i.e. m_{S act}
+                    inactive_comp = (bioactivities == inactive_label)
+                    #comp_with_substructure = np.in1d(np.asarray(mols_ids) , np.asarray(mols_with_current_substructure))
+                    nb_comp_with_substructure_inactive = np.sum(inactive_comp * comp_with_substructure)
+
+                    ## ACTIVE 
+                    #########
+                    #filter threshold of compounds with the substructure
+                    filter_a = nb_comp_with_substructure > threshold_nb_substructures 
+                    if filter_a: 
+                        # filter threshold
+                        filter_b = (float(nb_comp_with_substructure_active) / float(np.sum(comp_with_substructure))) > threshold_frequency
+                        if filter_b:
+                            p_value = 0
+                            if substructure_id in self.toxic_substructure.keys():
+                                #self.toxic_substructure[substructure_id].append((float(nb_comp_with_substructure_active) / float(np.sum(comp_with_substructure))))
+                                continue
+                            else : 
+                                self.toxic_substructure.update({substructure_id:[(float(nb_comp_with_substructure_active) / float(np.sum(comp_with_substructure)))]})
+
+                            ''' 
+                            '''
+
+                        
+                        ## INACTIVE 
+                        #########
+                        #filter threshold of compounds with the substructure
+                        # filter threshold
+                        filter_b = (float(nb_comp_with_substructure_inactive) / float(np.sum(comp_with_substructure))) > threshold_frequency
+                        if filter_b: 
+                            p_value = 0 
+
+                            if substructure_id in self.nontoxic_substructure.keys():
+                                #self.nontoxic_substructure[substructure_id].append((float(nb_comp_with_substructure_inactive) / float(np.sum(comp_with_substructure))))
+                                continue
+                            else : 
+                                self.nontoxic_substructure.update({substructure_id:[(float(nb_comp_with_substructure_inactive) / float(np.sum(comp_with_substructure)))]})
+                            '''
+                            '''
+                    else:
+                        subs_discarded.append(substructure_id) 
+                        root_atoms_discarded.append(atom_radius[0][0])
+                                
+        #if self.Bonferroni == True:
+        #   self.output['p_value'] = self.output['p_value'] * self.output.shape[0]
+        #   self.output = self.output[self.output.p_value < 0.05]
+        print 'Number of substructures processed: ', nb_substructures_processed 
+        print 'Significant toxic substructures: ', len(self.toxic_substructure), 'substructures'
+        print 'Significant non toxic substructures :', len(self.nontoxic_substructure), 'substructures'
+
+        return self.toxic_substructure , self.nontoxic_substructure 
 
     def XlSXOutputWriter(self,output, output_filename, molCol=['Substructure',"Substructure in Molecule"], size=(300,300)):
         """
@@ -349,7 +446,7 @@ class CalculatePvaluesContinuous:
                            threshold_ratio,
                            threshold_high_act_nb_substructures,
                            threshold_high_act_ratio,
-                           threshold_bioactivity=0,
+                           threshold_bioactivity,
                            Bonferroni=True
                            ):
         self.Bonferroni = Bonferroni
@@ -375,15 +472,13 @@ class CalculatePvaluesContinuous:
                     # filter threshold
                     filter_b = float(nb_comp_with_substructure / nb_mols) > threshold_ratio
                     if filter_a and filter_b:
-                        mask = np.in1d(mols_ids,substructure_dictionary[substructure_id])
+                        mask = np.in1d(mols_ids,substructure_dictionary[substructure_id]) # if 
                         bio_substr = bioactivities[mask]
                         bio_wo_substr = bioactivities[np.logical_not(mask)]
 
-                        self.bio_substr.append(len(bio_substr))
-
                         high_bio_substr = []
                         for i in bio_substr : 
-                            if i >= threshold_bioactivity:
+                            if i <= threshold_bioactivity:
                                 high_bio_substr.append(i)
 
                         self.filter_c_nb_check.append(len(high_bio_substr))
@@ -427,6 +522,8 @@ class CalculatePvaluesContinuous:
                                                              'Substructure in Molecule': m1,
                                                              'Diff. distribution means (w - wo)': np.mean(bio_substr) - np.mean(bio_wo_substr),
                                                              },ignore_index=True)
+                            else: 
+                                print "p_value is {}".format(p_value)
            
         print 'number of substructures processed: ', nb_substructures_processed 
         
@@ -474,11 +571,11 @@ class CalculatePvaluesContinuous:
                         bio_substr = bioactivities[mask]
                         bio_wo_substr = bioactivities[np.logical_not(mask)]
 
-                        self.bio_substr.append(len(bio_substr))
+                        self.bio_substr.append(bio_substr)
 
                         high_bio_substr = []
                         for i in bio_substr : 
-                            if i >= threshold_bioactivity:
+                            if i <= threshold_bioactivity:
                                 high_bio_substr.append(i)
 
                         self.filter_c_nb_check.append(len(high_bio_substr))
